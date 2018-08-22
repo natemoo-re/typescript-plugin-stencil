@@ -19,6 +19,15 @@ interface DocumentMeta {
     internalMethods: string[],
 }
 class StencilConstants {
+    Decorators = [
+        'Prop',
+        'State',
+        'Event',
+        'Method'
+    ]
+    DecoratorDocs = {
+        'Prop': '\n\n[Read More](https://stenciljs.com/docs/decorators/#prop)'
+    }
     ComponentBuiltinMethods = [
         'render',
         'hostData'
@@ -241,8 +250,6 @@ function init(modules: { typescript: typeof ts_module }) {
             return meta;
         }
 
-        let cachedQuickInfo = new Map<string, ts.QuickInfo>();
-
         proxy.findReferences = (fileName: string, position: number) => {
             const sourceFile = info.languageService.getProgram().getSourceFile(fileName);
             const meta = gatherDocumentMeta(sourceFile);
@@ -305,31 +312,56 @@ function init(modules: { typescript: typeof ts_module }) {
 
             return prior;
         }
+
         proxy.getQuickInfoAtPosition = (fileName: string, position: number) => {
-            const node = Helper.getNode(fileName, position);
-            const cacheId = `${fileName}@${node.pos}:${node.end}`;
-            if (cachedQuickInfo.has(cacheId)) {
-                return cachedQuickInfo.get(cacheId);
-            } else {
-                const prior = info.languageService.getQuickInfoAtPosition(fileName, position);
-                let docs = [];
-                if (prior && prior.kind === 'method') {
-                    const name = prior.displayParts.find(x => x.kind === 'methodName');
-                    if (name && Stencil.ComponentLifecycleMethods.includes(name.text)) {
-                        if (!prior.documentation.some(x => x.text.indexOf('**Component Lifecycle Method**') > -1)) {
-                            prior.documentation.push({ kind: 'markdown', text: '\n\n**Component Lifecycle Method**' + Stencil.ComponentLifecycleDocs[name.text] });
-                        }
-                    } else if (Stencil.ComponentBuiltinMethods.includes(name.text)) {
-                        if (!prior.documentation.some(x => x.text.indexOf('**Component Method**') > -1)) {
-                            prior.documentation.push({ kind: 'markdown', text: '\n\n**Component Method**' + Stencil.ComponentBuiltinMethodDocs[name.text] });
-                        }
+            // const node = Helper.getNode(fileName, position);
+            const prior = info.languageService.getQuickInfoAtPosition(fileName, position);
+
+            if (prior && prior.kind === 'method' || prior.kind === 'property') {
+                const sourceFile = info.languageService.getProgram().getSourceFile(fileName);
+                const meta: DocumentMeta = gatherDocumentMeta(sourceFile);
+                const name = prior.kind === 'method' ? prior.displayParts.find(x => x.kind === 'methodName').text : prior.displayParts.find(x => x.kind === 'propertyName').text;
+                const { item, category } = getCategory(meta, name);
+                
+                if (category === 'watch') {
+                    prior.displayParts.splice(1, 1, ...buildStencilDisplayParts('watch'))
+                    prior.displayParts.push({ kind: 'punctuation', text: '\n' }, { kind: 'punctuation', text: '(' }, { kind: 'text', text: 'watched' }, { kind: 'punctuation', text: ')' }, { kind: 'space', text: ' ' }, { kind: 'keyword', text: item.prop });
+                } else if (category === 'listen') {
+                    let eventDisplayParts = [];
+                    (item as any).events.forEach((event) => {
+                        return eventDisplayParts.push(...buildStencilDecoratorDisplayParts('Watch', event), { kind: 'punctuation', text: '\n' });
+                    })
+                    prior.displayParts.splice(0, 4);
+                    prior.displayParts.splice(0, 0, ...eventDisplayParts)
+                } else {
+                    prior.displayParts.splice(1, 1, ...buildStencilDisplayParts(category))
+                }
+            }
+
+            if (prior && prior.kind === 'method') {
+                const name = prior.displayParts.find(x => x.kind === 'methodName');
+                if (name && Stencil.ComponentLifecycleMethods.includes(name.text)) {
+                    const replaceIndex = prior.displayParts.findIndex(x => x.kind === 'text' && x.text === 'method');
+                    prior.displayParts.splice(replaceIndex, 1, { kind: 'text', text: 'lifecycle' });
+                    if (!prior.documentation.some(x => x.text.indexOf('**Component Lifecycle Method**') > -1)) {
+                        prior.documentation.push({ kind: 'markdown', text: '\n\n**Component Lifecycle Method**' + Stencil.ComponentLifecycleDocs[name.text] });
+                    }
+                } else if (Stencil.ComponentBuiltinMethods.includes(name.text)) {
+                    if (!prior.documentation.some(x => x.text.indexOf('**Component Method**') > -1)) {
+                        prior.documentation.push({ kind: 'markdown', text: '\n\n**Component Method**' + Stencil.ComponentBuiltinMethodDocs[name.text] });
                     }
                 }
-                info.project.projectService.logger.info(`[test] QuickInfo "${JSON.stringify(prior, null, 2)}"`);
-                
-                cachedQuickInfo.set(cacheId, prior);
-                return prior;
+            } else if (prior && prior.kind === 'alias') {
+                const name = prior.displayParts.find(x => x.kind === 'aliasName').text;
+                if (name && Stencil.Decorators.includes(name)) {
+                    if (!prior.documentation.some(x => x.text.indexOf('**Stencil Decorator**') > -1)) {
+                        prior.documentation.push({ kind: 'markdown', text: '\n\n**Stencil Decorator**' + Stencil.DecoratorDocs[name] || '' });
+                    }
+                }
             }
+            info.project.projectService.logger.info(`[test] QuickInfo "${JSON.stringify(prior, null, 2)}"`);
+            
+            return prior;
         }
         
         let cachedCompletionEntryDetailsFileName: string;
@@ -390,25 +422,6 @@ function init(modules: { typescript: typeof ts_module }) {
                 position,
                 opts
             );
-
-            // if (node && ts.isTemplateExpression(node)) {
-            //     return {
-            //         isGlobalCompletion: false,
-            //         isMemberCompletion: false,
-            //         isNewIdentifierLocation: true,
-            //         entries: ['background-image'].map(el => {
-            //             // insertText.push({
-            //             //     span: { start: position + `</${el}>`.length, length: 0 },
-            //             //     newText: `</${el}>`
-            //             // })
-            //             return {
-            //                 name: el,
-            //                 kind: ts.ScriptElementKind.unknown,
-            //                 insertText: `${el}: `
-            //             }
-            //         }) as ts.CompletionEntry[]
-            //     }
-            // }
             
             if (node && node.parent && ts.isCallExpression(node.parent) && ts.isDecorator(node.parent.parent)) {
                 const decorator = ts.isIdentifier(node.parent.expression) && node.parent.expression.text;
