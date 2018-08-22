@@ -1,0 +1,19 @@
+{
+  "name": "typescript-plugin-stencil",
+  "version": "0.1.0-beta",
+  "description": "",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "npm run dev",
+    "dev": "tsc -p . -w",
+    "build": "tsc -p ."
+  },
+  "author": "",
+  "license": "ISC",
+  "peerDependencies": {
+    "typescript": "^2.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^2.3.0"
+  }
+}
