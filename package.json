@@ -1,6 +1,6 @@
 {
   "name": "typescript-plugin-stencil",
-  "version": "0.1.0-beta",
+  "version": "0.1.0-alpha",
   "description": "",
   "main": "dist/main.js",
   "scripts": {
