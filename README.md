@@ -34,21 +34,8 @@ Typescript plugin for a smoother Developer Experience within [Stencil](https://s
 
 ## Installation
 Install the package
-```bash
-npm i --save-dev typescript-plugin-stencil
 ```
-
-Modify `tsconfig.json`
-```json
-{
-    "compilerOptions": {
-        ...
-        "plugins": [
-            { "name": "typescript-plugin-stencil" }
-        ]
-    }
-    ...
-}
+npx ts-plugin install stencil
 ```
 
 Make sure your editor is using the Workspace version of Typescript 
